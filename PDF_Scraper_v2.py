@@ -8,9 +8,36 @@ from pdfminer.pdfpage import PDFPage
 from pdfminer.pdfparser import PDFParser
 import pprint
 import json
+import urllib
+from urllib import request
+import sys
+import PyPDF2
+import os
 
-filename = "b1.pdf"
-output_filename = "output.json"
+# takes in the args from the command line
+# exits if there are greater than or less than 3 args, sys.argv[0] is always the program name
+if len(sys.argv) != 3:
+    print("Usage: <" + sys.argv[0] + "> <PDF url> <output json filename>")
+    sys.exit(-1)
+
+# downloads the pdf file at the location
+urllib.request.urlretrieve(sys.argv[1], 'input.pdf')
+filename = 'input.pdf'
+output_filename = sys.argv[2]
+
+# checks for valid PDF file
+try:
+    a = open(filename, "rb")
+    PyPDF2.PdfFileReader(a)
+except PyPDF2.utils.PdfReadError:
+    # this might be redundant since we're just going to overwrite it anyway on next program execution
+    # os.remove(filename)
+    print("Invalid PDF file downloaded")
+    sys.exit(-2)
+else:
+    a.close()
+    pass
+
 
 def extract_text(pdf_file, password='', page_numbers=None, maxpages=0,
                  caching=True, codec='utf-8', laparams=None):
