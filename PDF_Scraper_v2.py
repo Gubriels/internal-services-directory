@@ -30,7 +30,8 @@ try:
     a = open(filename, "rb")
     PyPDF2.PdfFileReader(a)
 except PyPDF2.utils.PdfReadError:
-    # this might be redundant since we're just going to overwrite it anyway on next program execution
+    # this line, os.remove(filename), might be redundant since we're just going to overwrite it anyway on next
+    # program execution
     # os.remove(filename)
     print("Invalid PDF file downloaded")
     sys.exit(-2)
