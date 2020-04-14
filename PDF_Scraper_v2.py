@@ -94,6 +94,7 @@ def read_page(page):
     data["Program Name"] = page[0]
     data["Executive Summary"] = ""
     data["Program Summary"] = ""
+    data["Related Programs"] = ""
 
     need_contact = True
     exec_endline = 0
@@ -125,6 +126,27 @@ def read_page(page):
         elif line.startswith("Program Offer Stage: "):
             data["Program Offer Stage"] = line.split(": ")[-1]
 
+        elif i < 12 and line[0].isdigit() and line[4].isdigit() and "\\" not in line:
+            nums = line.split(" ")
+            for num in nums:
+                num = num.strip()
+                num = num.strip(',')
+                num = num.strip(';')
+                data["Related Programs"] += (num + " ")
+            data["Related Programs"].strip()
+
+
+        elif (line.count(' ') == 1 or line.count(' ') == 2) and need_contact:
+            potential_name = line.split(' ')
+            is_name = True
+            for word in potential_name:
+                if word in words:
+                    is_name = False
+            if is_name:
+                data["Program Contact"] = line
+                need_contact = False
+
+
         #we're at the start of one of the summaries
         elif len(line) > 40:
             #if we're at the beginning of executive summary
@@ -146,16 +168,6 @@ def read_page(page):
                 finish_prog = True
             else:
                 data["Program Summary"] += line
-
-        elif (line.count(' ') == 1 or line.count(' ') == 2) and need_contact:
-            potential_name = line.split(' ')
-            is_name = True
-            for word in potential_name:
-                if word in words:
-                    is_name = False
-            if is_name:
-                data["Program Contact"] = line
-                need_contact = False
 
     return data
 
