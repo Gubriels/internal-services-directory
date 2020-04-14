@@ -8,25 +8,14 @@ from pdfminer.pdfpage import PDFPage
 from pdfminer.pdfparser import PDFParser
 import pprint
 import json
+import re
 
 filename = "b1.pdf"
 output_filename = "output.json"
-textoutput = "output.txt"
+
 
 def extract_text(pdf_file, password='', page_numbers=None, maxpages=0,
                  caching=True, codec='utf-8', laparams=None):
-    """Parse and return the text contained in a PDF file.
-​
-    :param pdf_file: Path to the PDF file to be worked on
-    :param password: For encrypted PDFs, the password to decrypt.
-    :param page_numbers: List of zero-indexed page numbers to extract.
-    :param maxpages: The maximum number of pages to parse
-    :param caching: If resources should be cached
-    :param codec: Text decoding codec
-    :param laparams: An LAParams object from pdfminer.layout. If None, uses
-        some default settings that often work well.
-    :return: a string containing all of the text extracted.
-    """
     if laparams is None:
         laparams = LAParams()
     prev = ""
@@ -34,96 +23,144 @@ def extract_text(pdf_file, password='', page_numbers=None, maxpages=0,
     with open(pdf_file, "rb") as fp:
         output_string = StringIO()
         rsrcmgr = PDFResourceManager()
-        device = TextConverter(rsrcmgr, output_string, laparams=laparams)
+        device = TextConverter(rsrcmgr, output_string,
+                               laparams=laparams)
         interpreter = PDFPageInterpreter(rsrcmgr, device)
         pro = 0
         for page in PDFPage.get_pages(
-                fp,
-                page_numbers,
-                maxpages=maxpages,
-                password=password,
-                caching=caching,
+                fp, page_numbers, maxpages=maxpages,
+                password=password, caching=caching,
                 check_extractable=True,
         ):
             interpreter.process_page(page)
             current = output_string.getvalue()
             pages.append(current[len(prev):])
-            # print(pages)
             prev = current
             print(pro)
             pro += 1
-            
+        print("text extracted")
         return pages
-        
+
 pages = extract_text(filename)
 
-with open("data.pkl", "wb") as f:
-    pickle.dump(pages, f)
-print()
+keys = {
+    "Department",
+    "Program Contact", 
+    "Program Offer Type", 
+    "Program Offer Stage", 
+    "Related Programs",
+    "Program Characteristics",
+    "Executive Summary", 
+    "Program Summary"
+}
+departments = { 
+    "Community Justice", 
+    "Community Services", 
+    "County Assets", 
+    "County Management", 
+    "District Attorney",
+    "Sheriff", 
+    "County Human Services",
+    "Health Department", 
+    "Library", 
+    "Nondepartmental"
+}
+program_offer_types = {
+    "Existing Operating Program", 
+    "Support", 
+    "Administration",
+    "Innovative/New Program", 
+    "Internal Service"
+}
+program_characteristics = {
+    "One-Time-Only Request",
+    "Backfill State/Federal/Grant", 
+    "Measure 5 Education"
+}
+program_contacts = {}
+words = set()
 
-def start_with_field(t, f):
-    for f1 in f:
-        if t.startswith(f1):
-            return f1
-            
-def read_page(s):
-    s = s.replace('\u2019', '\'')
-    s = s.split("\n")
-    program = s[0]
-    # print(s)
-    # print()
-    f = ['Department:', 'Program Contact:',
-         'Program Offer Type:', 'Program Offer Stage:',
-         'Related Programs:',
-         'Program Characteristics:',
-         'Executive Summary',
-         'Program Summary', 'Performance Measures']
+lines = {"Executive Summary", "Program Summary", "Performance Measures Descriptions"}
+lines.update(keys)
+lines.update(departments)
+lines.update(program_offer_types)
+lines.update(program_characteristics)
+for line in lines:
+    word = line.split(' ')
+    for w in word:
+        words.add(w)
 
-    d = {k: '' for k in f}
-    d['id'] = program
-    d.pop('Performance Measures')
-    
-    d['Department:'] = s[6]
-    print(s)
-    print(s[0])
-    for i in range(10, 16):
-        print(s[i])
-        if not s[i].startswith("Program") and len(s[i]) > 0:
-            d['Program Contact:'] = s[i]
-            break
-    print()
-    d['Program Offer Type:'] = s[7]
-    for i in range(9, 16):
-        if s[i].startswith("Program Offer Stage: "):
-            d['Program Offer Stage:'] = s[i].split(':')[-1]
-            break
-    d['Related Programs:'] = s[8]
-    d['Program Characteristics:'] = s[4].split(':')[-1]
+def read_page(page):
+    page = page.split("\n")
+    data = {k: "" for k in keys}
+    data["Program Name"] = page[0]
+    data["Executive Summary"] = ""
+    data["Program Summary"] = ""
 
-    i = 15
-    started = False
-    while not started:
-        if len(s[i]) < 40:
-            i += 1
-        else:
-            started = True
-    
-    while len(s[i]) != 0:
-        d['Executive Summary'] = d['Executive Summary'] + s[i]
-        i += 1
-    
-    started = False
-    while not started:
-        if len(s[i]) < 40:
-            i += 1
-        else:
-            started = True
+    need_contact = True
+    exec_endline = 0
 
-    while len(s[i]) != 0:
-        d['Program Summary'] = d['Program Summary'] + s[i]
-        i += 1
+    start_exec = False
+    finish_exec = False
+    start_prog = False
+    finish_prog = False
 
-    return d
+    for i, line in enumerate(page):
+        line = line.encode('ascii', 'ignore')
+        line = line.decode('ascii', 'ignore')
+        if line == '':
+            continue
+        elif line[-1] == ':' or i == 0 or line.startswith("www"):
+            continue
+        if line in departments:
+            data["Department"] = line
+
+        elif line in program_offer_types:
+            data["Program Offer Type"] = line
+
+        elif line in program_contacts:
+            data["Program Contacts"] = line
+
+        elif line.startswith("Program Characteristics:"):
+            data["Program Characteristics"] = line.split(": ")[1]
+
+        elif line.startswith("Program Offer Stage: "):
+            data["Program Offer Stage"] = line.split(": ")[-1]
+
+        #we're at the start of one of the summaries
+        elif len(line) > 40:
+            #if we're at the beginning of executive summary
+            if not start_exec:
+                start_exec = True
+            #if we're at the beginning of program summary
+            elif finish_exec and not start_prog:
+                start_prog = True
+
+        if start_exec and not finish_exec:
+            if line == "Program Summary":
+                finish_exec = True
+            else:
+                data["Executive Summary"] += line
+
+        if start_prog and not finish_prog:
+            if line == "Performance Measures":
+                return data
+                finish_prog = True
+            else:
+                data["Program Summary"] += line
+
+        elif (line.count(' ') == 1 or line.count(' ') == 2) and need_contact:
+            potential_name = line.split(' ')
+            is_name = True
+            for word in potential_name:
+                if word in words:
+                    is_name = False
+
+            if is_name:
+                data["Program Contact"] = line
+                need_contact = False
+
+    return data
 
 with open("data.pkl", "rb") as f:
     pages = pickle.load(f)
@@ -133,5 +170,16 @@ for p in pages:
     d = read_page(p)
     data.append(d)
 
+
 with open(output_filename, "w") as f:
     json.dump(data, f, indent="\t")
+
+with open('output.json', 'r') as f:
+    json_str = f.read()
+    data = json.loads(json_str)
+    for item in data:
+        result = re.findall(r'(\d+)', item["Program Contact"])
+        error_name = item["Program Name"]
+        if result:
+            print(result)
+            print("errors are in :" , error_name, '\n')
